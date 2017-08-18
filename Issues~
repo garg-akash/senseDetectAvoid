@@ -1,0 +1,9 @@
+1. Writing python srv for finding roots.
+2. v_x getting published on twist.linear.x everytime not the updated velocity 
+3. Do not calculate velocity using twist instead by /pose--------test
+4. Using 2 subscriber--------------------------------------------test_2
+5. ros::Time::now().toSec()--------------------------------------test_3 (jugaad velocity)
+3. Changing flow of program--------------------------------------test_4
+4. Initial velocities in y & z fixed to 0 (pose gives velocities in y z as well),
+   Maximum Velocity limited, 
+   delta velocity in x after first divert not required-----------test_5
