@@ -21,7 +21,7 @@
 #include <image_geometry/stereo_camera_model.h>
 
 #include <std_msgs/String.h>
-#include <std_msgs/Float64MultiArray.h>
+// #include <std_msgs/Float64MultiArray.h>
 #include <std_msgs/Float64.h>
 #include <stdlib.h>
 #include <string>
@@ -37,10 +37,10 @@ using namespace ros;
 using namespace std;
 
 ros::Publisher vel_pub;
-ros::Publisher coeff;
+// ros::Publisher coeff;
 ros::ServiceClient client;
 geometry_msgs::Twist twist;
-std_msgs::Float64MultiArray values;   /*values is for publishing coefficient of power 4 equation*/
+//std_msgs::Float64MultiArray values;   /*values is for publishing coefficient of power 4 equation*/
 int Zinit = 1;
 int Yinit = 0;
 int Xinit = 0;
@@ -49,7 +49,7 @@ float v_x = 0.3;                /*quad velocities*/
 float v_y = 0.3;
 float v_z = 0.3;
 float safe_dist = 3;
-float R = 0.8; 					//Inflated radius  
+float R = 0.55; 					//Inflated radius  
 float ob1_x = 6;				//Obstacle data to be found out
 float ob1_y = 0;
 float ob1_z = 1;
@@ -57,7 +57,9 @@ float ob1Vel_x = 0;
 float ob1Vel_y = 0;
 float ob1Vel_z = 0;
 
-float my_p[3], L_vel[3], slant[3], d[3];				/*Quad Pose*/
+float my_p[3], del_p[3], L_vel[3], slant[3], d[3];	
+float  my_p_prev[3] = {0};			/*Quad Pose*/
+double t1, t2;
 float rX,rY,rZ;
 float r_Prev = 0;			
 
@@ -77,6 +79,7 @@ void Divert(float vxx, float vyy, float vzz, float d, float vqq)
 		del_t = ((float)t)/CLOCKS_PER_SEC;
 		count = count + del_t;
 		cout<<"count: "<<count<<"\n";
+  		cout<<"Vq_new: "<<vxx<<"\tVq_new: "<<vyy<<"\tVq_new: "<<vzz<<"\n";
 	}
 }
 
@@ -86,9 +89,9 @@ void VisualCheck(float vx, float vy, float vz)
 	rY = ob1_y - my_p[1];
 	rZ = ob1_z - my_p[2];
 	float r_Mag = sqrt(pow(rX,2) + pow(rY,2) + pow(rZ,2));
-	L_vel[0] = twist.linear.x - ob1Vel_x;
-	L_vel[1] = twist.linear.y - ob1Vel_y;
-	L_vel[2] = twist.linear.z - ob1Vel_z;
+	L_vel[0] = vx - ob1Vel_x;
+	L_vel[1] = vy - ob1Vel_y;
+	L_vel[2] = vz - ob1Vel_z;
 	float L_vel_Mag = sqrt(pow(L_vel[0],2) + pow(L_vel[1],2) + pow(L_vel[2],2));
 	float Vo1_Mag = sqrt(pow(ob1Vel_x,2) + pow(ob1Vel_y,2) + pow(ob1Vel_z,2));
 	float dp = L_vel[0]*rX + L_vel[1]*rY + L_vel[2]*rZ;
@@ -107,13 +110,13 @@ void VisualCheck(float vx, float vy, float vz)
 	//std_msgs::Float64MultiArray msg;
 	if (d_Mag<R && r_dot<0)
 	{
-		cout<<"Collision\n";
+		cout<<"Collision "<<clock()<<"\n";
 		if (r_Mag<safe_dist)
 		{ 
-			Vq = sqrt(pow(twist.linear.x,2) + pow(twist.linear.y,2) + pow(twist.linear.z,2));  //Check once
+			Vq = sqrt(pow(vx,2) + pow(vy,2) + pow(vz,2));  //Check once
 			//el = acos(twist.linear.y/Vq);
-			el = acos(sqrt(pow(twist.linear.x,2) + pow(twist.linear.y,2))/Vq);
-			az = atan2(double(twist.linear.y),double(twist.linear.x));
+			el = acos(sqrt(pow(vx,2) + pow(vy,2))/Vq);
+			az = atan2(double(vy),double(vx));
 
 			cout<<"Vq: "<<Vq<<"\tel: "<<el<<"\taz: "<<az<<"\n";
 
@@ -132,13 +135,13 @@ void VisualCheck(float vx, float vy, float vz)
         	p1 = 2*(a3+a5);
         	p0 = a1+a4-b;
         	//vector<double> vec = {p4,p3,p2,p1,p0};
-        	values.data.push_back(p4);
-        	values.data.push_back(p3);
-        	values.data.push_back(p2);
-        	values.data.push_back(p1);
-        	values.data.push_back(p0);
-        	values.data.push_back(az);
-        	coeff.publish(values);
+        	// values.data.push_back(p4);
+        	// values.data.push_back(p3);
+        	// values.data.push_back(p2);
+        	// values.data.push_back(p1);
+        	// values.data.push_back(p0);
+        	// values.data.push_back(az);
+        	// coeff.publish(values);
         	//ros::Subscriber thangle = nh.subscribe("self/azimuth", 100, initialCallback);
         	
         	velocityobs::MyRoots srv;
@@ -174,38 +177,54 @@ void VisualCheck(float vx, float vy, float vz)
 		}
 	}
 }
-void initialCallback(const PoseStampedConstPtr& p)
+void initialCallback_1(const PoseStampedConstPtr& p)
 {
 	twist.linear.x = 0;
     twist.linear.y = 0;
     twist.linear.z = 0;
     twist.angular.z = 0;
 
-	my_p[0] = p->pose.position.x;
-	my_p[1] = p->pose.position.y;
-	my_p[2] = p->pose.position.z;
-	if(my_p[2] < Zinit)             //consider error in z not z alone 
+	my_p_prev[0] = p->pose.position.x;
+	my_p_prev[1] = p->pose.position.y;
+	my_p_prev[2] = p->pose.position.z;
+	/*if(my_p[2] < Zinit)             //consider error in z not z alone 
 	{
 		twist.linear.z = v_z;     //dt time issue
-	}
-	else if(my_p[0] < Xfinal)
+	}*/
+
+	if(my_p_prev[0] < Xfinal)
 	{
+		t1 = p->header.stamp.toSec();
 		twist.linear.x = v_x;
 		vel_pub.publish(twist);
-		VisualCheck(v_x,0,0);
 	}
+}
 
-	vel_pub.publish(twist);
+void initialCallback_2(const PoseStampedConstPtr& q)
+{
+	my_p[0] = q->pose.position.x;
+	my_p[1] = q->pose.position.y;
+	my_p[2] = q->pose.position.z;
+	t2 = q->header.stamp.toSec();
+	VisualCheck((my_p[0] - my_p_prev[0])/(t2 - t1), 0, 0);
 }
 int main(int argc, char** argv)
 {
 
   ros::init(argc, argv, "velObs");
   ros::NodeHandle nh;
-  client = nh.serviceClient<velocityobs::MyRoots>("find_roots");
-  ros::Subscriber my_pose = nh.subscribe("/pose", 100, initialCallback);
-  vel_pub = nh.advertise<geometry_msgs::Twist>("bebop/cmd_vel", 1);
-  coeff = nh.advertise<std_msgs::Float64MultiArray>("self/eqcoeff", 1);
-  ros::spin();
-  return 0;
+  ros::Subscriber my_pose_1, my_pose_2;
+  ros::Rate loop_rate(1);
+  while (ros::ok())
+  {
+  	client = nh.serviceClient<velocityobs::MyRoots>("find_roots");
+  	vel_pub = nh.advertise<geometry_msgs::Twist>("bebop/cmd_vel", 1);
+  	my_pose_1 = nh.subscribe("/pose", 10, initialCallback_1);
+  	my_pose_2 = nh.subscribe("/pose", 10, initialCallback_2);
+  	ros::spinOnce();
+    loop_rate.sleep();
+  }
+  //coeff = nh.advertise<std_msgs::Float64MultiArray>("self/eqcoeff", 1);
+  //ros::spin();
+  //return 0;
 }
