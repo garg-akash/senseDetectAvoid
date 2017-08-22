@@ -210,22 +210,6 @@ include_directories(include ${catkin_INCLUDE_DIRS})
 add_executable(velCone_moveQuad	 src/velCone_moveQuad.cpp)
 target_link_libraries(velCone_moveQuad ${catkin_LIBRARIES})
 
-add_executable(velCone_moveQuad_test	 src/velCone_moveQuad_test.cpp)
-target_link_libraries(velCone_moveQuad_test ${catkin_LIBRARIES})
-
-add_executable(velCone_moveQuad_test_2	 src/velCone_moveQuad_test_2.cpp)
-target_link_libraries(velCone_moveQuad_test_2 ${catkin_LIBRARIES})
-
-add_executable(velCone_moveQuad_test_3	 src/velCone_moveQuad_test_3.cpp)
-target_link_libraries(velCone_moveQuad_test_3 ${catkin_LIBRARIES})
-
-add_executable(velCone_moveQuad_test_4	 src/velCone_moveQuad_test_4.cpp)
-target_link_libraries(velCone_moveQuad_test_4 ${catkin_LIBRARIES})
-
-add_executable(servTest	 src/servTest.cpp)
-target_link_libraries(servTest ${catkin_LIBRARIES})
-add_dependencies(servTest velocityobs_gencpp)
-
-add_executable(velCone_moveQuad_test_5	 src/velCone_moveQuad_test_5.cpp)
-target_link_libraries(velCone_moveQuad_test_5 ${catkin_LIBRARIES})
+add_executable(velCone_moveQuad_bebop	 src/velCone_moveQuad_bebop.cpp)
+target_link_libraries(velCone_moveQuad_bebop ${catkin_LIBRARIES})
 
