@@ -25,18 +25,20 @@
 #include <stdlib.h>
 #include <string>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <nav_msgs/Odometry.h>
 #include <velocityobs/MyRoots.h>
 
 using namespace sensor_msgs;
 using namespace geometry_msgs;
+using namespace nav_msgs;
 using namespace message_filters;
 using namespace cv;
 using namespace ros;
 using namespace std;
 
 ros::Publisher vel_pub;
-// ros::Publisher coeff;
 ros::ServiceClient client;
 geometry_msgs::Twist twist;
 //std_msgs::Float64MultiArray values;   /*values is for publishing coefficient of power 4 equation*/
@@ -88,30 +90,28 @@ void Divert(float vxx, float vyy, float vzz, float d, float vqq)
   }
 }
 
-void initialCallback_1(const PoseStampedConstPtr& p)
+void initialCallback(const TwistStampedConstPtr& tw, const OdometryConstPtr& p)
 {
   twist.linear.x = 0;
   twist.linear.y = 0;
   twist.linear.z = 0;
   twist.angular.z = 0;
-  my_p[0] = p->pose.position.x;
-  my_p[1] = p->pose.position.y;
-  my_p[2] = p->pose.position.z;
+  my_p[0] = p->pose.pose.position.x;
+  my_p[1] = p->pose.pose.position.y;
+  my_p[2] = p->pose.pose.position.z;
   t1 = p->header.stamp.toSec();
 
   rX = ob1_x - my_p[0];
   rY = ob1_y - my_p[1];
   rZ = ob1_z - my_p[2];
   float r_Mag = sqrt(pow(rX,2) + pow(rY,2) + pow(rZ,2));
-  double vx = (my_p[0] - my_p_prev[0])/(t1 - t2);
-  cout<<"vx = "<<vx<<"\n";
+  double vx = tw->twist.linear.x;
+  cout<<"Average vx = "<<vx<<"\n";
   if (vx<0)
   {
     cout<<"vx sign adjusted\n";
     vx = -1*vx;
   }
-  //double vy = (my_p[1] - my_p_prev[1])/(t2 - t1);
-  //double vz = (my_p[2] - my_p_prev[2])/(t2 - t1);
   double vy = 0;           /*considering motion in x direction only*/
   double vz = 0;
   L_vel[0] = vx - ob1Vel_x;
@@ -211,7 +211,7 @@ void initialCallback_1(const PoseStampedConstPtr& p)
       }
       else
       {
-	cout<<"Generated velocities exceed limit\n";
+	      cout<<"Generated velocities exceed limit\n";
       }
     }
     my_p_prev[0] = my_p[0];
@@ -223,12 +223,16 @@ void initialCallback_1(const PoseStampedConstPtr& p)
 int main(int argc, char** argv)
 {
 
-  ros::init(argc, argv, "velObs");
+  ros::init(argc, argv, "newvel");
   ros::NodeHandle nh;
-  ros::Subscriber my_pose_1; 
   client = nh.serviceClient<velocityobs::MyRoots>("find_roots");
-  vel_pub = nh.advertise<geometry_msgs::Twist>("bebop/cmd_vel", 1);
-  my_pose_1 = nh.subscribe("/pose", 1, initialCallback_1);
+  vel_pub = nh.advertise<geometry_msgs::Twist>("/self/cmd_vel", 1);
+  message_filters::Subscriber<TwistStamped> my_vel(nh,"/self/velX", 1);
+  message_filters::Subscriber<Odometry> my_pose(nh,"/bebeop/odom", 1);
+  typedef sync_policies::ApproximateTime<TwistStamped, Odometry> MySyncPolicy;
+  Synchronizer<MySyncPolicy> sync_1(MySyncPolicy(1), my_vel, my_pose);
+  sync_1.registerCallback(boost::bind(&initialCallback, _1, _2));
+
   ros::spin();
   return 0;
 }

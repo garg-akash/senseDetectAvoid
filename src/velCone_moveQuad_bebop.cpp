@@ -26,9 +26,11 @@
 #include <string>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <nav_msgs/Odometry.h>
 #include <velocityobs/MyRoots.h>
 
 using namespace sensor_msgs;
+using namespace nav_msgs;
 using namespace geometry_msgs;
 using namespace message_filters;
 using namespace cv;
@@ -88,15 +90,15 @@ void Divert(float vxx, float vyy, float vzz, float d, float vqq)
   }
 }
 
-void initialCallback_1(const PoseStampedConstPtr& p)
+void initialCallback(const OdometryConstPtr& p)
 {
   twist.linear.x = 0;
   twist.linear.y = 0;
   twist.linear.z = 0;
   twist.angular.z = 0;
-  my_p[0] = p->pose.position.x;
-  my_p[1] = p->pose.position.y;
-  my_p[2] = p->pose.position.z;
+  my_p[0] = p->pose.pose.position.x;
+  my_p[1] = p->pose.pose.position.y;
+  my_p[2] = p->pose.pose.position.z;
   t1 = p->header.stamp.toSec();
 
   rX = ob1_x - my_p[0];
@@ -225,10 +227,10 @@ int main(int argc, char** argv)
 
   ros::init(argc, argv, "velObs");
   ros::NodeHandle nh;
-  ros::Subscriber my_pose_1; 
+  ros::Subscriber my_pose; 
   client = nh.serviceClient<velocityobs::MyRoots>("find_roots");
   vel_pub = nh.advertise<geometry_msgs::Twist>("bebop/cmd_vel", 1);
-  my_pose_1 = nh.subscribe("/pose", 1, initialCallback_1);
+  my_pose = nh.subscribe("/bebop/odom", 1, initialCallback);
   ros::spin();
   return 0;
 }
