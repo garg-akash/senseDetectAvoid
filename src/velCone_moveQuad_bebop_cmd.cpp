@@ -118,8 +118,9 @@ void initialCallback(const OdometryConstPtr& p)
     init_trans = true;
   }
   cout<<"Actual Pose: "<<my_p[0]<<"\t"<<my_p[1]<<"\t"<<my_p[2]<<"\n";
+  float temp = my_p[0];
   my_p[0] = trans[0]*my_p[0] + trans[1]*my_p[1];
-  my_p[1] = trans[2]*my_p[0] + trans[3]*my_p[1];
+  my_p[1] = trans[2]*temp + trans[3]*my_p[1];
   cout<<"Transformed X: "<<my_p[0]<<"\tY: "<<my_p[1]<<"\tZ: "<<my_p[2]<<"\n";
   t1 = p->header.stamp.toSec();
   vel = ((my_p[0] - my_p_prev[0])/(t1-t2));
