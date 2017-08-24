@@ -15,6 +15,7 @@
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <nav_msgs/Odometry.h>
+#include <tf/transform_datatypes.h>
 #include <velocityobs/MyRoots.h>
 
 using namespace sensor_msgs;
@@ -27,14 +28,37 @@ ros::Publisher vel_pub;
 geometry_msgs::Twist twist;
 
 float my_p[3];  
-double vel = 0.1;
+float vel = 0.16;
+float trans[4];
+bool init_trans = false;
+float prev;
+double run_t1, run_t2;
 
 void initialCallback(const OdometryConstPtr& p)
 {
   my_p[0] = p->pose.pose.position.x;
   my_p[1] = p->pose.pose.position.y;
   my_p[2] = p->pose.pose.position.z;
-  if (my_p[0] < 6)
+  if (!init_trans)
+  {
+    run_t1 = p->header.stamp.toSec();
+    tf::Quaternion q(p->pose.pose.orientation.x, p->pose.pose.orientation.y, p->pose.pose.orientation.z, p->pose.pose.orientation.w); // xyzw
+    tf::Matrix3x3 m(q);
+    double roll, pitch, yaw;
+    m.getRPY(roll, pitch, yaw);
+    std::cout << "Roll: " << roll << ", Pitch: " << pitch << ", Yaw: " << yaw << std::endl;
+    std::cout << "Roll: " << roll * (180/M_PI)<< ", Pitch: " << pitch * (180/M_PI)<< ", Yaw: " << yaw * (180/M_PI)<< std::endl;
+    trans[0] = cos(yaw);
+    trans[1] = sin(yaw);
+    trans[2] = -sin(yaw);
+    trans[3] = cos(yaw);
+    init_trans = true;
+    cout<<"Called Once"<<"\n";
+  }
+  //my_p[0] = trans[0]*my_p[0] + trans[1]*my_p[1];
+  //my_p[1] = trans[2]*my_p[0] + trans[3]*my_p[1];
+  cout<<"Transformed X: "<<trans[0]*my_p[0] + trans[1]*my_p[1]<<"\tY: "<<trans[2]*my_p[0] + trans[3]*my_p[1]<<"\n";
+  if ((trans[0]*my_p[0] + trans[1]*my_p[1]) < 10)
   {
     twist.linear.x = vel;
     twist.linear.y = 0;
@@ -42,6 +66,15 @@ void initialCallback(const OdometryConstPtr& p)
     twist.angular.z = 0;
     vel_pub.publish(twist);
   }
+  
+  if (trans[0]*my_p[0] + trans[1]*my_p[1] > 10.2)
+  {
+    run_t2 = p->header.stamp.toSec();
+    cout<<"run_t1: "<<run_t1<<"\trun_t2: "<<run_t2<<"\n";
+    cout<<"Average Velocity for the trip: "<<prev/(run_t2 - run_t1)<<"\n";
+  }
+  prev = trans[0]*my_p[0] + trans[1]*my_p[1];
+
 }
 int main(int argc, char** argv)
 {

@@ -28,6 +28,7 @@
 #include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <nav_msgs/Odometry.h>
+#include <tf/transform_datatypes.h>
 #include <velocityobs/MyRoots.h>
 
 using namespace sensor_msgs;
@@ -50,7 +51,7 @@ float v_x = 0.1;                /*quad velocities*/
 float v_y = 0;
 float v_z = 0;
 float safe_dist = 3;
-float R = 1;           //Inflated radius  
+float R = 0.75;           //Inflated radius  
 float ob1_x = 6;        //Obstacle data to be found out
 float ob1_y = 0;
 float ob1_z = 1;
@@ -60,8 +61,6 @@ float ob1Vel_z = 0;
 
 float my_p[3], del_p[3], L_vel[3], slant[3], d[3];  
 float my_p_prev[3] = {0};      /*Quad Pose*/
-double sum_x=0;
-double sum_y=0;
 double t1;
 double t2 = 0;
 float rX,rY,rZ;
@@ -71,8 +70,10 @@ int cntr = 0;
 double vel_avg = 0;
 double vel;
 float r_Mag;
+float trans[4];
+bool init_trans = false;
 
-void Divert(float vxx, float vyy, float vzz, float d, float vqq)
+void Divert(float v_xx, float v_yy, float v_zz, float d, float vqq)
 {
   float count = 0;
   //float del_t;
@@ -83,8 +84,8 @@ void Divert(float vxx, float vyy, float vzz, float d, float vqq)
   {
     //t = clock();
     t = ros::Time::now().toSec();
-    twist.linear.x = vxx;
-    twist.linear.y = vyy;
+    twist.linear.x = v_xx;
+    twist.linear.y = v_yy;
     twist.linear.z = 0; /*no velocity should be imparted in z direction*/
     vel_pub.publish(twist);
     usleep(500);
@@ -93,7 +94,7 @@ void Divert(float vxx, float vyy, float vzz, float d, float vqq)
     //del_t = ((float)t)/CLOCKS_PER_SEC;
     count = count + del_t;
     cout<<"count: "<<count<<"\n";
-    cout<<"Vq_new in X: "<<vxx<<"\tVq_new in Y: "<<vyy<<"\tVq_new in Z: "<<vzz<<"\n";
+    cout<<"cmd_divert in X: "<<v_xx<<"\tcmd_divert in Y: "<<v_yy<<"\tcmd_divert in Z: "<<v_zz<<"\n";
   }
 }
 
@@ -102,10 +103,25 @@ void initialCallback(const OdometryConstPtr& p)
   my_p[0] = p->pose.pose.position.x;
   my_p[1] = p->pose.pose.position.y;
   my_p[2] = p->pose.pose.position.z;
+  if (!init_trans)
+  {
+    tf::Quaternion q(p->pose.pose.orientation.x, p->pose.pose.orientation.y, p->pose.pose.orientation.z, p->pose.pose.orientation.w); // xyzw
+    tf::Matrix3x3 m(q);
+    double roll, pitch, yaw;
+    m.getRPY(roll, pitch, yaw);
+    std::cout << "Roll: " << roll << ", Pitch: " << pitch << ", Yaw: " << yaw << std::endl;
+    std::cout << "Roll: " << roll * (180/M_PI)<< ", Pitch: " << pitch * (180/M_PI)<< ", Yaw: " << yaw * (180/M_PI)<< std::endl;
+    trans[0] = cos(yaw);
+    trans[1] = sin(yaw);
+    trans[2] = -sin(yaw);
+    trans[3] = cos(yaw);
+    init_trans = true;
+  }
+  cout<<"Actual Pose: "<<my_p[0]<<"\t"<<my_p[1]<<"\t"<<my_p[2]<<"\n";
+  my_p[0] = trans[0]*my_p[0] + trans[1]*my_p[1];
+  my_p[1] = trans[2]*my_p[0] + trans[3]*my_p[1];
+  cout<<"Transformed X: "<<my_p[0]<<"\tY: "<<my_p[1]<<"\tZ: "<<my_p[2]<<"\n";
   t1 = p->header.stamp.toSec();
-  sum_x = sum_x + (my_p[0]-my_p_prev[0]);
-  sum_y = sum_y + (my_p[1]-my_p_prev[1]);
-  cout<<"Dist: "<<sqrt(pow(sum_x,2) + pow(sum_y,2));
   vel = ((my_p[0] - my_p_prev[0])/(t1-t2));
   if (cntr > 5)
   {
@@ -119,7 +135,7 @@ void initialCallback(const OdometryConstPtr& p)
     rY = ob1_y - my_p[1];
     rZ = ob1_z - my_p[2];
     r_Mag = sqrt(pow(rX,2) + pow(rY,2) + pow(rZ,2));
-    double vx = vel_avg;
+    float vx = vel_avg;
     cout<<"Average vx = "<<vx<<"\n";
     cout<<"r_Mag: "<<r_Mag<<"\n";
     if (vx<0)
@@ -127,8 +143,8 @@ void initialCallback(const OdometryConstPtr& p)
       cout<<"vx sign adjusted\n";
       vx = -1*vx;
     }
-    double vy = 0;           /*considering motion in x direction only*/
-    double vz = 0;
+    float vy = 0;           /*considering motion in x direction only*/
+    float vz = 0;
     L_vel[0] = vx - ob1Vel_x;
     L_vel[1] = vy - ob1Vel_y;
     L_vel[2] = vz - ob1Vel_z;
@@ -145,8 +161,7 @@ void initialCallback(const OdometryConstPtr& p)
     float r_dot = r_Mag - r_Prev;
     r_Prev = r_Mag;
     t2 = t1;
-    cout<<"d_mag: "<<d_Mag<<"\tr_dot: "<<r_dot<<"\n";
-    cout<<"Pose: "<<my_p[0]<<"\t"<<my_p[1]<<"\t"<<my_p[2]<<"\n";
+    cout<<"d_Mag: "<<d_Mag<<"\tr_dot: "<<r_dot<<"\n";
 
     if (d_Mag<R && r_dot<0)
     {
@@ -168,6 +183,9 @@ void initialCallback(const OdometryConstPtr& p)
       if (r_Mag > safe_dist)
       {
         twist.linear.x = v_x;
+        twist.linear.y = 0;
+        twist.linear.z = 0;
+        twist.angular.z = 0;
         vel_pub.publish(twist);
       }
       else
@@ -177,8 +195,7 @@ void initialCallback(const OdometryConstPtr& p)
         el = acos(sqrt(pow(vx,2) + pow(vy,2))/Vq);
         az = atan2(double(vy),double(vx));
 
-        cout<<"Vq: "<<Vq<<"\tel: "<<el<<"\taz: "<<az<<"\n";
-
+        cout<<"Vq: "<<Vq<<"\tel: "<<el<<"\taz: "<<az<<"\n"; 
         H = (pow(r_Mag,2)-pow(R,2))/pow(Vq,2);
         K = (rX*ob1Vel_x + rY*ob1Vel_y + rZ*ob1Vel_z)/Vq;
         a1 = pow(rX,2)*pow(cos(el),2);
@@ -216,16 +233,19 @@ void initialCallback(const OdometryConstPtr& p)
         Vq_new_Z = Vq*sin(el);
 
         cout<<"Vq_new_X: "<<Vq_new_X<<"\tVq_new_Y: "<<Vq_new_Y<<"\tVq_new_Z: "<<Vq_new_Z<<"\n";
+        float v_xx = 0.249744*pow(Vq_new_X,3) - 0.2286*pow(Vq_new_X,2) + 0.1863*Vq_new_X + 0.0042; //mapping from velocity to cmd_vel value
+        float v_yy = 0.249744*pow(Vq_new_Y,3) - 0.2286*pow(Vq_new_Y,2) + 0.1863*Vq_new_Y + 0.0042;
+        cout<<"cmd_new_X: "<<v_xx<<"\tcmd_new_Y: "<<v_yy<<"\tcmd_new_Z: "<<Vq_new_Z<<"\n";
         usleep(1000);
-        if (Vq_new_X<1 && Vq_new_Y<0.5)
+        if (v_xx<v_x)
         {
-          Divert(Vq_new_X, Vq_new_Y, Vq_new_Z, safe_dist, (Vq + Vo1_Mag));
+          Divert(v_xx, v_yy, 0, safe_dist, (Vq + Vo1_Mag));
           //double del_Vq_new_X = vx - Vq_new_X;
-          double del_Vq_new_Y = vy - Vq_new_Y;
+          float v_yyy = -v_yy;
 
-          cout<<"Vq_new_XX: "<<Vq_new_X<<"\tVq_new_YY: "<<vy + del_Vq_new_Y<<"\tVq_new_ZZ: "<<Vq_new_Z<<"\n";
+          // cout<<"Vq_new_XX: "<<Vq_new_X<<"\tVq_new_YY: "<<vy + del_Vq_new_Y<<"\tVq_new_ZZ: "<<Vq_new_Z<<"\n";
 
-          Divert(Vq_new_X, vy + del_Vq_new_Y, Vq_new_Z, safe_dist, (Vq + Vo1_Mag));
+          Divert(v_xx, v_yyy, 0, safe_dist, (Vq + Vo1_Mag));
         }
         else
         {
