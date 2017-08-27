@@ -228,3 +228,6 @@ target_link_libraries(velCone_moveQuad_bebop_cmd ${catkin_LIBRARIES})
 
 add_executable(tf_test src/tf_test.cpp)
 target_link_libraries(tf_test ${catkin_LIBRARIES})
+
+add_executable(moveiny src/moveiny.cpp)
+target_link_libraries(moveiny ${catkin_LIBRARIES})

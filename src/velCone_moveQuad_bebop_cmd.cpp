@@ -46,13 +46,13 @@ geometry_msgs::Twist twist;
 int Zinit = 1;
 int Yinit = 0;
 int Xinit = 0;
-int Xfinal = 6;
-float v_x = 0.1;                /*quad velocities*/
+int Xfinal = 18;
+float v_x = 0.07;                /*quad velocities*/
 float v_y = 0;
 float v_z = 0;
 float safe_dist = 3;
 float R = 0.75;           //Inflated radius  
-float ob1_x = 6;        //Obstacle data to be found out
+float ob1_x = 10;        //Obstacle data to be found out
 float ob1_y = 0;
 float ob1_z = 1;
 float ob1Vel_x = 0;
@@ -76,10 +76,8 @@ bool init_trans = false;
 void Divert(float v_xx, float v_yy, float v_zz, float d, float vqq)
 {
   float count = 0;
-  //float del_t;
-  double del_t;
-  //clock_t t;
-  double t;
+  double del_t = 0;
+  double t = 0;
   while (count < d/vqq)
   {
     //t = clock();
@@ -88,9 +86,13 @@ void Divert(float v_xx, float v_yy, float v_zz, float d, float vqq)
     twist.linear.y = v_yy;
     twist.linear.z = 0; /*no velocity should be imparted in z direction*/
     vel_pub.publish(twist);
-    usleep(500);
+    //vel_pub.publish(twist);
+    //usleep(500);
+    ros::Duration(0.2).sleep();
     //t = clock() - t;
     del_t = ros::Time::now().toSec() - t;
+    cout<<"del_t: "<<del_t<<"\n";
+    cout<<"ros::Time::now().toSec: "<<ros::Time::now().toSec()<<"\n";
     //del_t = ((float)t)/CLOCKS_PER_SEC;
     count = count + del_t;
     cout<<"count: "<<count<<"\n";
@@ -109,7 +111,7 @@ void initialCallback(const OdometryConstPtr& p)
     tf::Matrix3x3 m(q);
     double roll, pitch, yaw;
     m.getRPY(roll, pitch, yaw);
-    std::cout << "Roll: " << roll << ", Pitch: " << pitch << ", Yaw: " << yaw << std::endl;
+    //std::cout << "Roll: " << roll << ", Pitch: " << pitch << ", Yaw: " << yaw << std::endl;
     std::cout << "Roll: " << roll * (180/M_PI)<< ", Pitch: " << pitch * (180/M_PI)<< ", Yaw: " << yaw * (180/M_PI)<< std::endl;
     trans[0] = cos(yaw);
     trans[1] = sin(yaw);
@@ -117,28 +119,31 @@ void initialCallback(const OdometryConstPtr& p)
     trans[3] = cos(yaw);
     init_trans = true;
   }
-  cout<<"Actual Pose: "<<my_p[0]<<"\t"<<my_p[1]<<"\t"<<my_p[2]<<"\n";
+  //cout<<"Actual Pose: "<<my_p[0]<<"\t"<<my_p[1]<<"\t"<<my_p[2]<<"\n";
   float temp = my_p[0];
   my_p[0] = trans[0]*my_p[0] + trans[1]*my_p[1];
   my_p[1] = trans[2]*temp + trans[3]*my_p[1];
   cout<<"Transformed X: "<<my_p[0]<<"\tY: "<<my_p[1]<<"\tZ: "<<my_p[2]<<"\n";
   t1 = p->header.stamp.toSec();
-  vel = ((my_p[0] - my_p_prev[0])/(t1-t2));
+  /*vel = ((my_p[0] - my_p_prev[0])/(t1-t2));
   if (cntr > 5)
   {
     vel_avg = vel_avg/5;
     twist.linear.x = vel_avg;
     twist.linear.y = 0;
     twist.linear.z = 0;
-    twist.angular.z = 0;
+    twist.angular.z = 0;*/
 
     rX = ob1_x - my_p[0];
     rY = ob1_y - my_p[1];
     rZ = ob1_z - my_p[2];
     r_Mag = sqrt(pow(rX,2) + pow(rY,2) + pow(rZ,2));
-    float vx = vel_avg;
-    cout<<"Average vx = "<<vx<<"\n";
     cout<<"r_Mag: "<<r_Mag<<"\n";
+    //float vx = vel_avg;
+    //cout<<"Average vx = "<<vx<<"\n";
+    float vx = 451.3784*pow(v_x,3) - 169.719*pow(v_x,2) + 24.0052*v_x - 0.4868920577; //cmd_vel mapped to avg velocity
+    cout<<"Average vx = "<<vx<<"\n";
+    //cout<<"r_Mag: "<<r_Mag<<"\n";
     if (vx<0)
     {
       cout<<"vx sign adjusted\n";
@@ -162,7 +167,7 @@ void initialCallback(const OdometryConstPtr& p)
     float r_dot = r_Mag - r_Prev;
     r_Prev = r_Mag;
     t2 = t1;
-    cout<<"d_Mag: "<<d_Mag<<"\tr_dot: "<<r_dot<<"\n";
+    //cout<<"d_Mag: "<<d_Mag<<"\tr_dot: "<<r_dot<<"\n";
 
     if (d_Mag<R && r_dot<0)
     {
@@ -183,6 +188,7 @@ void initialCallback(const OdometryConstPtr& p)
     {
       if (r_Mag > safe_dist)
       {
+        cout<<"Reached: "<<v_x<<"\n";
         twist.linear.x = v_x;
         twist.linear.y = 0;
         twist.linear.z = 0;
@@ -232,20 +238,28 @@ void initialCallback(const OdometryConstPtr& p)
         Vq_new_X = Vq*cos(el)*cos(new_t);
         Vq_new_Y = Vq*cos(el)*sin(new_t);
         Vq_new_Z = Vq*sin(el);
-
+   
         cout<<"Vq_new_X: "<<Vq_new_X<<"\tVq_new_Y: "<<Vq_new_Y<<"\tVq_new_Z: "<<Vq_new_Z<<"\n";
         float v_xx = 0.249744*pow(Vq_new_X,3) - 0.2286*pow(Vq_new_X,2) + 0.1863*Vq_new_X + 0.0042; //mapping from velocity to cmd_vel value
         float v_yy = 0.249744*pow(Vq_new_Y,3) - 0.2286*pow(Vq_new_Y,2) + 0.1863*Vq_new_Y + 0.0042;
         cout<<"cmd_new_X: "<<v_xx<<"\tcmd_new_Y: "<<v_yy<<"\tcmd_new_Z: "<<Vq_new_Z<<"\n";
         usleep(1000);
-        if (v_xx<v_x)
+        if (v_xx<0.09)
         {
+          v_yy = 0.06;
           Divert(v_xx, v_yy, 0, safe_dist, (Vq + Vo1_Mag));
           //double del_Vq_new_X = vx - Vq_new_X;
           float v_yyy = -v_yy;
-
+          // if(v_yyy > 0)
+          // {
+          //   v_yyy = v_yyy + 0.02;
+          // }
+          // else
+          // {
+          //   v_yyy = v_yyy - 0.02;
+          // }
           // cout<<"Vq_new_XX: "<<Vq_new_X<<"\tVq_new_YY: "<<vy + del_Vq_new_Y<<"\tVq_new_ZZ: "<<Vq_new_Z<<"\n";
-
+          usleep(3000);
           Divert(v_xx, v_yyy, 0, safe_dist, (Vq + Vo1_Mag));
         }
         else
@@ -256,7 +270,7 @@ void initialCallback(const OdometryConstPtr& p)
     }
     cntr = 0;
     vel_avg = 0;
-  }
+  //}
 
   if (vel> 0.4)
   {
@@ -275,7 +289,7 @@ int main(int argc, char** argv)
   ros::init(argc, argv, "newvel");
   ros::NodeHandle nh;
   client = nh.serviceClient<velocityobs::MyRoots>("find_roots");
-  vel_pub = nh.advertise<geometry_msgs::Twist>("/self/cmd_vel", 1);
+  vel_pub = nh.advertise<geometry_msgs::Twist>("/bebop/cmd_vel", 1);
   ros::Subscriber my_pose = nh.subscribe("/bebop/odom", 1, initialCallback);
   ros::spin();
   return 0;

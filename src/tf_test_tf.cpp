@@ -43,7 +43,8 @@ float my_p[2], trans[4];
 bool init_trans = false;
 float prev;
 double run_t1, run_t2;
-
+tf::Transform offset_sensors, offset_sensors_transformed;
+geometry_msgs::Pose pt;
 void initialCallback(const OdometryConstPtr& p)
 {
   my_p[0] = p->pose.pose.position.x;
@@ -51,21 +52,24 @@ void initialCallback(const OdometryConstPtr& p)
   my_p[2] = p->pose.pose.position.z;
   if (!init_trans)
   {
+    tf::poseMsgToTF(p->pose.pose, offset_sensors);
+    offset_sensors_transformed = offset_sensors.inverse();
   	run_t1 = p->header.stamp.toSec();
     tf::Quaternion q(p->pose.pose.orientation.x, p->pose.pose.orientation.y, p->pose.pose.orientation.z, p->pose.pose.orientation.w); // xyzw
     tf::Matrix3x3 m(q);
-    double roll, pitch, yaw;
-    m.getRPY(roll, pitch, yaw);
-    std::cout << "Roll: " << roll << ", Pitch: " << pitch << ", Yaw: " << yaw << std::endl;
-    std::cout << "Roll: " << roll * (180/M_PI)<< ", Pitch: " << pitch * (180/M_PI)<< ", Yaw: " << yaw * (180/M_PI)<< std::endl;
-    trans[0] = cos(yaw);
-    trans[1] = sin(yaw);
-    trans[2] = -sin(yaw);
-    trans[3] = cos(yaw);
+    // double roll, pitch, yaw;
+    // m.getRPY(roll, pitch, yaw);
+    // std::cout << "Roll: " << roll << ", Pitch: " << pitch << ", Yaw: " << yaw << std::endl;
+    // std::cout << "Roll: " << roll * (180/M_PI)<< ", Pitch: " << pitch * (180/M_PI)<< ", Yaw: " << yaw * (180/M_PI)<< std::endl;
+    // trans[0] = cos(yaw);
+    // trans[1] = sin(yaw);
+    // trans[2] = -sin(yaw);
+    // trans[3] = cos(yaw);
     init_trans = true;
     cout<<"Called Once"<<"\n";
   }
-  cout<<"Transformed X: "<<trans[0]*my_p[0] + trans[1]*my_p[1]<<"\tY: "<<trans[2]*my_p[0] + trans[3]*my_p[1]<<"\n";
+  pt = offset_sensors_transformed*p->pose.pose;
+  cout<<"Transformed X: "<<pt.position.x<<"\tY: "<<pt.position.y<<"\n";
   /*if (trans[0]*my_p[0] + trans[1]*my_p[1] == prev)
   {
   	run_t2 = p->header.stamp.toSec();
@@ -77,20 +81,9 @@ void initialCallback(const OdometryConstPtr& p)
 }
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "newvel");
+  ros::init(argc, argv, "trans");
   ros::NodeHandle nh;
-  // tf::Quaternion q(-0.0194183181042, 0.00560611769912,0.931588681464,0.362951827293); // xyzw
-  // tf::Matrix3x3 m(q);
-  // double roll, pitch, yaw;
-  // m.getRPY(roll, pitch, yaw);
-  // std::cout << "Roll: " << roll << ", Pitch: " << pitch << ", Yaw: " << yaw << std::endl;
-  // std::cout << "Roll: " << roll * (180/M_PI)<< ", Pitch: " << pitch * (180/M_PI)<< ", Yaw: " << yaw * (180/M_PI)<< std::endl;
-  // trans[0] = cos(yaw);
-  // trans[1] = sin(yaw);
-  // trans[2] = -sin(yaw);
-  // trans[3] = cos(yaw);
   ros::Subscriber my_pose = nh.subscribe("/bebop/odom", 1, initialCallback);
   ros::spin();
-  run_t2 = ros::Time::now().toSec();
   return 0;
 }
