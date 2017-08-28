@@ -9,6 +9,7 @@
 #include <fstream>
 #include <math.h>
 #include <time.h>
+#include <vector>
 
 #include <image_transport/subscriber_filter.h>
 #include <message_filters/subscriber.h>
@@ -42,16 +43,18 @@ using namespace std;
 ros::Publisher vel_pub;
 ros::ServiceClient client;
 geometry_msgs::Twist twist;
+vector<float> myvel;
 
 int Zinit = 1;
 int Yinit = 0;
 int Xinit = 0;
-int Xfinal = 18;
-float v_x = 0.07;                /*quad velocities*/
+int Xfinal = 15; //18 for outdoors
+float v_x = 0.06;                /*quad velocities*/
 float v_y = 0;
 float v_z = 0;
+float v_xx;
 float safe_dist = 3;
-float R = 0.75;           //Inflated radius  
+float R = 0.5;           //Inflated radius  
 float ob1_x = 10;        //Obstacle data to be found out
 float ob1_y = 0;
 float ob1_z = 1;
@@ -70,38 +73,42 @@ int cntr = 0;
 double vel_avg = 0;
 double vel;
 float r_Mag;
+float vy_const = 0.05;
+float epsilon = 0.15; //keep track of drift in y direction
 float trans[4];
 bool init_trans = false;
 
-void Divert(float v_xx, float v_yy, float v_zz, float d, float vqq)
-{
-  float count = 0;
-  double del_t = 0;
-  double t = 0;
-  while (count < d/vqq)
-  {
-    //t = clock();
-    t = ros::Time::now().toSec();
-    twist.linear.x = v_xx;
-    twist.linear.y = v_yy;
-    twist.linear.z = 0; /*no velocity should be imparted in z direction*/
-    vel_pub.publish(twist);
-    //vel_pub.publish(twist);
-    //usleep(500);
-    ros::Duration(0.2).sleep();
-    //t = clock() - t;
-    del_t = ros::Time::now().toSec() - t;
-    cout<<"del_t: "<<del_t<<"\n";
-    cout<<"ros::Time::now().toSec: "<<ros::Time::now().toSec()<<"\n";
-    //del_t = ((float)t)/CLOCKS_PER_SEC;
-    count = count + del_t;
-    cout<<"count: "<<count<<"\n";
-    cout<<"cmd_divert in X: "<<v_xx<<"\tcmd_divert in Y: "<<v_yy<<"\tcmd_divert in Z: "<<v_zz<<"\n";
-  }
-}
+// void Divert(float v_xx, float v_yy, float v_zz, float d, float vqq)
+// {
+//   float count = 0;
+//   double del_t = 0;
+//   double t = 0;
+//   while (count < d/vqq)
+//   {
+//     //t = clock();
+//     t = ros::Time::now().toSec();
+//     twist.linear.x = v_xx;
+//     twist.linear.y = v_yy;
+//     twist.linear.z = 0; /*no velocity should be imparted in z direction*/
+//     vel_pub.publish(twist);
+//     //vel_pub.publish(twist);
+//     //usleep(500);
+//     ros::Duration(0.4).sleep();
+//     //t = clock() - t;
+//     del_t = ros::Time::now().toSec() - t;
+//     cout<<"del_t: "<<del_t<<"\n";
+//     cout<<"ros::Time::now().toSec: "<<ros::Time::now().toSec()<<"\n";
+//     //del_t = ((float)t)/CLOCKS_PER_SEC;
+//     count = count + del_t;
+//     cout<<"count: "<<count<<"\n";
+//     cout<<"cmd_divert in X: "<<v_xx<<"\tcmd_divert in Y: "<<v_yy<<"\tcmd_divert in Z: "<<v_zz<<"\n";
+//   }
+// }
 
 void initialCallback(const OdometryConstPtr& p)
 {
+  //bool in_safe = false;
+  bool in_r_dot = false;
   my_p[0] = p->pose.pose.position.x;
   my_p[1] = p->pose.pose.position.y;
   my_p[2] = p->pose.pose.position.z;
@@ -125,78 +132,98 @@ void initialCallback(const OdometryConstPtr& p)
   my_p[1] = trans[2]*temp + trans[3]*my_p[1];
   cout<<"Transformed X: "<<my_p[0]<<"\tY: "<<my_p[1]<<"\tZ: "<<my_p[2]<<"\n";
   t1 = p->header.stamp.toSec();
-  /*vel = ((my_p[0] - my_p_prev[0])/(t1-t2));
-  if (cntr > 5)
+
+  rX = ob1_x - my_p[0];
+  rY = ob1_y - my_p[1];
+  rZ = ob1_z - my_p[2];
+  r_Mag = sqrt(pow(rX,2) + pow(rY,2) + pow(rZ,2));
+  cout<<"r_Mag: "<<r_Mag<<"\n";
+  //float vx = vel_avg;
+  //cout<<"Average vx = "<<vx<<"\n";
+  float vx = 451.3784*pow(v_x,3) - 169.719*pow(v_x,2) + 24.0052*v_x - 0.4868920577; //cmd_vel mapped to avg velocity (Kaatil equation)
+  cout<<"Average vx = "<<vx<<"\n";
+  //cout<<"r_Mag: "<<r_Mag<<"\n";
+  if (vx<0)
   {
-    vel_avg = vel_avg/5;
-    twist.linear.x = vel_avg;
+    cout<<"vx sign adjusted\n";
+    vx = -1*vx;
+  }
+  float vy = 0;           /*considering motion in x direction only*/
+  float vz = 0;
+  L_vel[0] = vx - ob1Vel_x;
+  L_vel[1] = vy - ob1Vel_y;
+  L_vel[2] = vz - ob1Vel_z;
+  float L_vel_Mag = sqrt(pow(L_vel[0],2) + pow(L_vel[1],2) + pow(L_vel[2],2));
+  float Vo1_Mag = sqrt(pow(ob1Vel_x,2) + pow(ob1Vel_y,2) + pow(ob1Vel_z,2));
+  float dp = L_vel[0]*rX + L_vel[1]*rY + L_vel[2]*rZ;
+  slant[0] = (dp/pow(L_vel_Mag,2))*L_vel[0];
+  slant[1] = (dp/pow(L_vel_Mag,2))*L_vel[1];
+  slant[2] = (dp/pow(L_vel_Mag,2))*L_vel[2];
+  d[0] = slant[0] - rX;
+  d[1] = slant[1] - rY;
+  d[2] = slant[2] - rZ;
+  float d_Mag = sqrt(pow(d[0],2) + pow(d[1],2) + pow(d[2],2));
+  float r_dot = r_Mag - r_Prev;
+  if (r_dot < 0)
+  {
+    in_r_dot = true;
+  }
+  r_Prev = r_Mag;
+  t2 = t1;
+  //cout<<"d_Mag: "<<d_Mag<<"\tr_dot: "<<r_dot<<"\n";
+
+  if (d_Mag<R && r_dot<0)
+  {
+    cout<<"Collision "<<clock()<<"\n";
+  }
+  double Vq,az,el,new_t,Vq_new_Y,Vq_new_X,Vq_new_Z;
+  float H,K,a1,a2,a3,a4,a5,b, p4,p3,p2,p1,p0;
+
+  if (my_p[0] >= Xfinal)
+  {
+    twist.linear.x = 0;
     twist.linear.y = 0;
     twist.linear.z = 0;
-    twist.angular.z = 0;*/
-
-    rX = ob1_x - my_p[0];
-    rY = ob1_y - my_p[1];
-    rZ = ob1_z - my_p[2];
-    r_Mag = sqrt(pow(rX,2) + pow(rY,2) + pow(rZ,2));
-    cout<<"r_Mag: "<<r_Mag<<"\n";
-    //float vx = vel_avg;
-    //cout<<"Average vx = "<<vx<<"\n";
-    float vx = 451.3784*pow(v_x,3) - 169.719*pow(v_x,2) + 24.0052*v_x - 0.4868920577; //cmd_vel mapped to avg velocity
-    cout<<"Average vx = "<<vx<<"\n";
-    //cout<<"r_Mag: "<<r_Mag<<"\n";
-    if (vx<0)
+    twist.angular.z = 0;
+    vel_pub.publish(twist);
+  }
+  else 
+  {
+    if (r_Mag > safe_dist)
     {
-      cout<<"vx sign adjusted\n";
-      vx = -1*vx;
-    }
-    float vy = 0;           /*considering motion in x direction only*/
-    float vz = 0;
-    L_vel[0] = vx - ob1Vel_x;
-    L_vel[1] = vy - ob1Vel_y;
-    L_vel[2] = vz - ob1Vel_z;
-    float L_vel_Mag = sqrt(pow(L_vel[0],2) + pow(L_vel[1],2) + pow(L_vel[2],2));
-    float Vo1_Mag = sqrt(pow(ob1Vel_x,2) + pow(ob1Vel_y,2) + pow(ob1Vel_z,2));
-    float dp = L_vel[0]*rX + L_vel[1]*rY + L_vel[2]*rZ;
-    slant[0] = (dp/pow(L_vel_Mag,2))*L_vel[0];
-    slant[1] = (dp/pow(L_vel_Mag,2))*L_vel[1];
-    slant[2] = (dp/pow(L_vel_Mag,2))*L_vel[2];
-    d[0] = slant[0] - rX;
-    d[1] = slant[1] - rY;
-    d[2] = slant[2] - rZ;
-    float d_Mag = sqrt(pow(d[0],2) + pow(d[1],2) + pow(d[2],2));
-    float r_dot = r_Mag - r_Prev;
-    r_Prev = r_Mag;
-    t2 = t1;
-    //cout<<"d_Mag: "<<d_Mag<<"\tr_dot: "<<r_dot<<"\n";
-
-    if (d_Mag<R && r_dot<0)
-    {
-      cout<<"Collision "<<clock()<<"\n";
-    }
-    double Vq,az,el,new_t,Vq_new_Y,Vq_new_X,Vq_new_Z;
-    float H,K,a1,a2,a3,a4,a5,b, p4,p3,p2,p1,p0;
-
-    if (my_p[0] >= Xfinal)
-    {
-      twist.linear.x = 0;
+      //cout<<"Reached: "<<v_x<<"\n";
+      twist.linear.x = v_x;
       twist.linear.y = 0;
       twist.linear.z = 0;
       twist.angular.z = 0;
+      if (abs(my_p[1]) > epsilon )
+      {
+        if(in_r_dot)
+        {
+          if(my_p[1] > 0)
+          {
+            cout<<"Drift in y"<<"\n";
+            twist.linear.y = -vy_const;
+          }
+          else
+          {
+            cout<<"Drift in -y"<<"\n";
+            twist.linear.y = vy_const;
+          }
+        }
+        /*else
+        {
+
+          twist.linear.y = vy_back;
+        }*/
+      }
       vel_pub.publish(twist);
     }
-    else 
+    else
     {
-      if (r_Mag > safe_dist)
+      if (r_dot < 0)
       {
-        cout<<"Reached: "<<v_x<<"\n";
-        twist.linear.x = v_x;
-        twist.linear.y = 0;
-        twist.linear.z = 0;
-        twist.angular.z = 0;
-        vel_pub.publish(twist);
-      }
-      else
-      {
+        //in_safe = true;
         Vq = sqrt(pow(vx,2) + pow(vy,2) + pow(vz,2));  //Check once
         //el = acos(twist.linear.y/Vq);
         el = acos(sqrt(pow(vx,2) + pow(vy,2))/Vq);
@@ -240,16 +267,23 @@ void initialCallback(const OdometryConstPtr& p)
         Vq_new_Z = Vq*sin(el);
    
         cout<<"Vq_new_X: "<<Vq_new_X<<"\tVq_new_Y: "<<Vq_new_Y<<"\tVq_new_Z: "<<Vq_new_Z<<"\n";
-        float v_xx = 0.249744*pow(Vq_new_X,3) - 0.2286*pow(Vq_new_X,2) + 0.1863*Vq_new_X + 0.0042; //mapping from velocity to cmd_vel value
+        v_xx = 0.249744*pow(Vq_new_X,3) - 0.2286*pow(Vq_new_X,2) + 0.1863*Vq_new_X + 0.0042; //mapping from velocity to cmd_vel value
         float v_yy = 0.249744*pow(Vq_new_Y,3) - 0.2286*pow(Vq_new_Y,2) + 0.1863*Vq_new_Y + 0.0042;
+        myvel.push_back (v_yy);
         cout<<"cmd_new_X: "<<v_xx<<"\tcmd_new_Y: "<<v_yy<<"\tcmd_new_Z: "<<Vq_new_Z<<"\n";
-        usleep(1000);
+        //usleep(1000);
         if (v_xx<0.09)
         {
-          v_yy = 0.06;
-          Divert(v_xx, v_yy, 0, safe_dist, (Vq + Vo1_Mag));
+          //v_yy = 0.06;
+          //Divert(v_xx, v_yy, 0, safe_dist, (Vq + Vo1_Mag));
           //double del_Vq_new_X = vx - Vq_new_X;
-          float v_yyy = -v_yy;
+          twist.linear.x = v_xx;
+          twist.linear.y = v_yy;
+          twist.linear.z = 0; /*no velocity should be imparted in z direction*/
+          vel_pub.publish(twist);
+
+          // Divert(0,0,0,2,1); //to get drone rid of its previous inertia
+          // float v_yyy = -v_yy;
           // if(v_yyy > 0)
           // {
           //   v_yyy = v_yyy + 0.02;
@@ -259,25 +293,45 @@ void initialCallback(const OdometryConstPtr& p)
           //   v_yyy = v_yyy - 0.02;
           // }
           // cout<<"Vq_new_XX: "<<Vq_new_X<<"\tVq_new_YY: "<<vy + del_Vq_new_Y<<"\tVq_new_ZZ: "<<Vq_new_Z<<"\n";
-          usleep(3000);
-          Divert(v_xx, v_yyy, 0, safe_dist, (Vq + Vo1_Mag));
+          // usleep(2000);
+          // Divert(v_xx, v_yyy, 0, safe_dist, (Vq + Vo1_Mag));
         }
         else
         {
           cout<<"Generated velocities exceed limit\n";
         }
       }
+      else
+      {
+        cout<<"Bring back in y"<<"\n";
+        float v_yyy = 0;
+        // if(!myvel.empty())
+        // {
+        //   v_yyy = -myvel.back();
+        //   myvel.pop_back();
+        // } 
+        // else
+        // {
+        //   v_yyy = 0;
+        // }
+        if (abs(my_p[1]) > 2*epsilon)
+        {
+          if (my_p[1] > 0)
+          {
+            v_yyy = -0.05;
+          }
+          else
+          {
+            v_yyy = 0.05;
+          }    
+        }
+        twist.linear.x = v_xx;
+        twist.linear.y = v_yyy;
+        twist.linear.z = 0; /*no velocity should be imparted in z direction*/
+        vel_pub.publish(twist);
+      }
     }
-    cntr = 0;
-    vel_avg = 0;
-  //}
-
-  if (vel> 0.4)
-  {
-    vel = 0.4;
   }
-  vel_avg = vel_avg + vel;
-  cntr++;
   my_p_prev[0] = my_p[0];
   my_p_prev[1] = my_p[1];
   my_p_prev[2] = my_p[2];
