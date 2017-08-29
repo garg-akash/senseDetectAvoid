@@ -46,9 +46,9 @@ double run_t1, run_t2;
 
 void initialCallback(const OdometryConstPtr& p)
 {
-  my_p[0] = p->pose.pose.position.x;
-  my_p[1] = p->pose.pose.position.y;
-  my_p[2] = p->pose.pose.position.z;
+  // my_p[0] = p->pose.pose.position.x;
+  // my_p[1] = p->pose.pose.position.y;
+  // my_p[2] = p->pose.pose.position.z;
   if (!init_trans)
   {
   	run_t1 = p->header.stamp.toSec();
@@ -58,14 +58,14 @@ void initialCallback(const OdometryConstPtr& p)
     m.getRPY(roll, pitch, yaw);
     std::cout << "Roll: " << roll << ", Pitch: " << pitch << ", Yaw: " << yaw << std::endl;
     std::cout << "Roll: " << roll * (180/M_PI)<< ", Pitch: " << pitch * (180/M_PI)<< ", Yaw: " << yaw * (180/M_PI)<< std::endl;
-    trans[0] = cos(yaw);
-    trans[1] = sin(yaw);
-    trans[2] = -sin(yaw);
-    trans[3] = cos(yaw);
-    init_trans = true;
+    // trans[0] = cos(yaw);
+    // trans[1] = sin(yaw);
+    // trans[2] = -sin(yaw);
+    // trans[3] = cos(yaw);
+    //init_trans = true;
     cout<<"Called Once"<<"\n";
   }
-  cout<<"Transformed X: "<<trans[0]*my_p[0] + trans[1]*my_p[1]<<"\tY: "<<trans[2]*my_p[0] + trans[3]*my_p[1]<<"\n";
+  //cout<<"Transformed X: "<<trans[0]*my_p[0] + trans[1]*my_p[1]<<"\tY: "<<trans[2]*my_p[0] + trans[3]*my_p[1]<<"\n";
   /*if (trans[0]*my_p[0] + trans[1]*my_p[1] == prev)
   {
   	run_t2 = p->header.stamp.toSec();

@@ -73,10 +73,11 @@ int cntr = 0;
 double vel_avg = 0;
 double vel;
 float r_Mag;
-float vy_const = 0.05;
-float epsilon = 0.15; //keep track of drift in y direction
+float vy_const = 0.05; //to make quad follow in a line
+float epsilon = 0.12; //keep track of drift in y direction
 float trans[4];
 bool init_trans = false;
+double yaw = 0.767;
 
 // void Divert(float v_xx, float v_yy, float v_zz, float d, float vqq)
 // {
@@ -108,24 +109,28 @@ bool init_trans = false;
 void initialCallback(const OdometryConstPtr& p)
 {
   //bool in_safe = false;
+      trans[0] = cos(yaw);
+    trans[1] = sin(yaw);
+    trans[2] = -sin(yaw);
+    trans[3] = cos(yaw);
   bool in_r_dot = false;
   my_p[0] = p->pose.pose.position.x;
   my_p[1] = p->pose.pose.position.y;
   my_p[2] = p->pose.pose.position.z;
-  if (!init_trans)
-  {
-    tf::Quaternion q(p->pose.pose.orientation.x, p->pose.pose.orientation.y, p->pose.pose.orientation.z, p->pose.pose.orientation.w); // xyzw
-    tf::Matrix3x3 m(q);
-    double roll, pitch, yaw;
-    m.getRPY(roll, pitch, yaw);
-    //std::cout << "Roll: " << roll << ", Pitch: " << pitch << ", Yaw: " << yaw << std::endl;
-    std::cout << "Roll: " << roll * (180/M_PI)<< ", Pitch: " << pitch * (180/M_PI)<< ", Yaw: " << yaw * (180/M_PI)<< std::endl;
-    trans[0] = cos(yaw);
-    trans[1] = sin(yaw);
-    trans[2] = -sin(yaw);
-    trans[3] = cos(yaw);
-    init_trans = true;
-  }
+  // if (!init_trans)
+  // {
+  //   tf::Quaternion q(p->pose.pose.orientation.x, p->pose.pose.orientation.y, p->pose.pose.orientation.z, p->pose.pose.orientation.w); // xyzw
+  //   tf::Matrix3x3 m(q);
+  //   double roll, pitch, yaw;
+  //   m.getRPY(roll, pitch, yaw);
+  //   //std::cout << "Roll: " << roll << ", Pitch: " << pitch << ", Yaw: " << yaw << std::endl;
+  //   std::cout << "Roll: " << roll * (180/M_PI)<< ", Pitch: " << pitch * (180/M_PI)<< ", Yaw: " << yaw * (180/M_PI)<< std::endl;
+  //   trans[0] = cos(yaw);
+  //   trans[1] = sin(yaw);
+  //   trans[2] = -sin(yaw);
+  //   trans[3] = cos(yaw);
+  //   init_trans = true;
+  // }
   //cout<<"Actual Pose: "<<my_p[0]<<"\t"<<my_p[1]<<"\t"<<my_p[2]<<"\n";
   float temp = my_p[0];
   my_p[0] = trans[0]*my_p[0] + trans[1]*my_p[1];
@@ -303,9 +308,9 @@ void initialCallback(const OdometryConstPtr& p)
       }
       else
       {
-        cout<<"Bring back in y"<<"\n";
+        cout<<"Bring back in y after collision avoidance"<<"\n";
         float v_yyy = 0;
-        // if(!myvel.empty())
+        // if(!myvel.empty())                                               //Method 1 
         // {
         //   v_yyy = -myvel.back();
         //   myvel.pop_back();
@@ -316,14 +321,32 @@ void initialCallback(const OdometryConstPtr& p)
         // }
         if (abs(my_p[1]) > 2*epsilon)
         {
-          if (my_p[1] > 0)
+          float kp = 0.15;                                                  //Method 2
+          float ki;
+          float kd;
+          float error, pid_op;
+          error = 0 - my_p[1];
+          pid_op = kp*error;
+          if (abs(pid_op) < 0.15)
           {
-            v_yyy = -0.05;
+            v_yyy = pid_op;
           }
-          else
-          {
-            v_yyy = 0.05;
-          }    
+
+          // float set_point[2] = {13,0}; // (x=ob1_x + safe_dist,y=0)          //Method 3
+          // error = sqrt(pow((set_point[0] - my_p[0]),2) + pow((set_point[1] - my_p[1]),2));
+          // float kp = 0.03;
+          // pid_op = kp*error;
+          // if (abs(pid_op) < 0.15)
+          // {
+          //   if (my_p[1] > 0)
+          //   {
+          //     v_yyy = -pid_op;
+          //   }
+          //   else
+          //   {
+          //     v_yyy = pid_op;
+          //   } 
+          // }
         }
         twist.linear.x = v_xx;
         twist.linear.y = v_yyy;
