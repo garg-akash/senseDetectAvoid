@@ -43,7 +43,7 @@ using namespace std;
 ros::Publisher vel_pub;
 ros::ServiceClient client;
 geometry_msgs::Twist twist;
-vector<float> myvel;
+//vector<float> myvel;   //Method 1 
 
 int Zinit = 1;
 int Yinit = 0;
@@ -77,7 +77,7 @@ float vy_const = 0.05; //to make quad follow in a line
 float epsilon = 0.12; //keep track of drift in y direction
 float trans[4];
 bool init_trans = false;
-double yaw = 0.767;
+double yaw;
 
 // void Divert(float v_xx, float v_yy, float v_zz, float d, float vqq)
 // {
@@ -109,10 +109,6 @@ double yaw = 0.767;
 void initialCallback(const OdometryConstPtr& p)
 {
   //bool in_safe = false;
-      trans[0] = cos(yaw);
-    trans[1] = sin(yaw);
-    trans[2] = -sin(yaw);
-    trans[3] = cos(yaw);
   bool in_r_dot = false;
   my_p[0] = p->pose.pose.position.x;
   my_p[1] = p->pose.pose.position.y;
@@ -274,7 +270,7 @@ void initialCallback(const OdometryConstPtr& p)
         cout<<"Vq_new_X: "<<Vq_new_X<<"\tVq_new_Y: "<<Vq_new_Y<<"\tVq_new_Z: "<<Vq_new_Z<<"\n";
         v_xx = 0.249744*pow(Vq_new_X,3) - 0.2286*pow(Vq_new_X,2) + 0.1863*Vq_new_X + 0.0042; //mapping from velocity to cmd_vel value
         float v_yy = 0.249744*pow(Vq_new_Y,3) - 0.2286*pow(Vq_new_Y,2) + 0.1863*Vq_new_Y + 0.0042;
-        myvel.push_back (v_yy);
+        //myvel.push_back (v_yy);   //Method 1 
         cout<<"cmd_new_X: "<<v_xx<<"\tcmd_new_Y: "<<v_yy<<"\tcmd_new_Z: "<<Vq_new_Z<<"\n";
         //usleep(1000);
         if (v_xx<0.09)
@@ -365,6 +361,12 @@ int main(int argc, char** argv)
 {
   ros::init(argc, argv, "newvel");
   ros::NodeHandle nh;
+  nh.getParam("/yaw_param",yaw);
+  trans[0] = cos(yaw);
+  trans[1] = sin(yaw);
+  trans[2] = -sin(yaw);
+  trans[3] = cos(yaw);
+  cout<<"Yaw poped: "<<yaw<<"\n";
   client = nh.serviceClient<velocityobs::MyRoots>("find_roots");
   vel_pub = nh.advertise<geometry_msgs::Twist>("/bebop/cmd_vel", 1);
   ros::Subscriber my_pose = nh.subscribe("/bebop/odom", 1, initialCallback);

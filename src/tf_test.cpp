@@ -29,6 +29,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <nav_msgs/Odometry.h>
 #include <tf/transform_datatypes.h>
+#include <boost/bind.hpp>
 #include <velocityobs/MyRoots.h>
 
 using namespace sensor_msgs;
@@ -43,8 +44,10 @@ float my_p[2], trans[4];
 bool init_trans = false;
 float prev;
 double run_t1, run_t2;
+double roll, pitch, yaw;
 
-void initialCallback(const OdometryConstPtr& p)
+
+void initialCallback(ros::NodeHandle &node_handle, const OdometryConstPtr& p)
 {
   // my_p[0] = p->pose.pose.position.x;
   // my_p[1] = p->pose.pose.position.y;
@@ -53,17 +56,17 @@ void initialCallback(const OdometryConstPtr& p)
   {
   	run_t1 = p->header.stamp.toSec();
     tf::Quaternion q(p->pose.pose.orientation.x, p->pose.pose.orientation.y, p->pose.pose.orientation.z, p->pose.pose.orientation.w); // xyzw
-    tf::Matrix3x3 m(q);
-    double roll, pitch, yaw;
+    tf::Matrix3x3 m(q);  
     m.getRPY(roll, pitch, yaw);
     std::cout << "Roll: " << roll << ", Pitch: " << pitch << ", Yaw: " << yaw << std::endl;
     std::cout << "Roll: " << roll * (180/M_PI)<< ", Pitch: " << pitch * (180/M_PI)<< ", Yaw: " << yaw * (180/M_PI)<< std::endl;
+    node_handle.setParam("yaw_param", yaw);
+    cout<<"Yaw pushed"<<"\n";
     // trans[0] = cos(yaw);
     // trans[1] = sin(yaw);
     // trans[2] = -sin(yaw);
     // trans[3] = cos(yaw);
     //init_trans = true;
-    cout<<"Called Once"<<"\n";
   }
   //cout<<"Transformed X: "<<trans[0]*my_p[0] + trans[1]*my_p[1]<<"\tY: "<<trans[2]*my_p[0] + trans[3]*my_p[1]<<"\n";
   /*if (trans[0]*my_p[0] + trans[1]*my_p[1] == prev)
@@ -77,19 +80,10 @@ void initialCallback(const OdometryConstPtr& p)
 }
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "newvel");
+  ros::init(argc, argv, "tf_ka_test");
   ros::NodeHandle nh;
-  // tf::Quaternion q(-0.0194183181042, 0.00560611769912,0.931588681464,0.362951827293); // xyzw
-  // tf::Matrix3x3 m(q);
-  // double roll, pitch, yaw;
-  // m.getRPY(roll, pitch, yaw);
-  // std::cout << "Roll: " << roll << ", Pitch: " << pitch << ", Yaw: " << yaw << std::endl;
-  // std::cout << "Roll: " << roll * (180/M_PI)<< ", Pitch: " << pitch * (180/M_PI)<< ", Yaw: " << yaw * (180/M_PI)<< std::endl;
-  // trans[0] = cos(yaw);
-  // trans[1] = sin(yaw);
-  // trans[2] = -sin(yaw);
-  // trans[3] = cos(yaw);
-  ros::Subscriber my_pose = nh.subscribe("/bebop/odom", 1, initialCallback);
+  //ros::Subscriber my_pose = nh.subscribe("/bebop/odom", 1, initialCallback);
+  ros::Subscriber my_pose = nh.subscribe<Odometry>("/bebop/odom", 1, boost::bind(&initialCallback, boost::ref(nh), _1));
   ros::spin();
   run_t2 = ros::Time::now().toSec();
   return 0;
